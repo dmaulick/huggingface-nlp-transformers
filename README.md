@@ -16,41 +16,11 @@ This project leverages the Hugging Face Transformers library and pretrained mode
 - Cross-domain text analysis
 
 
-## Topics Covered
-
-This notebook was a practical review of the following topics:
-
-1. Text preprocessing fundamentals:
-   - Tokenization approaches (word-based, subword, character-based)
-   - Numericalization (converting tokens to numbers)
-   - Creating batches for language models and classifiers
-
-2. Language model training:
-   - Fine-tuning pretrained models
-   - Text generation capabilities
-   - Using language models for transfer learning
-
-3. Text classification:
-   - Converting language models to classifiers
-   - Training techniques like gradual unfreezing
-   - Achieving state-of-the-art results
-
-4. Ethical considerations:
-   - Potential misuse of language models
-   - Disinformation and fake content generation
-   - Challenges in detecting machine-generated text
-
-The notebook demonstrates practical NLP techniques using the fastai library while highlighting important considerations around responsible use of these technologies.
-
-## From Fast.ai Lesson 4
-
-https://course.fast.ai/Lessons/lesson4.html
-
 ## Practical Lessons
 
 This notebook demonstrates critical practical lessons for NLP, with detailed explanations of not just what to do, but why each approach matters:
 
-1. Data preprocessing pipeline:
+1. [Data preprocessing pipeline](./Data%20preprocessing%20pipeline.md):
    - Tokenization requires careful language-specific handling because language is inherently complex and contextual:
      - Contractions (don't -> do n't): Split to help model understand negation patterns while preserving semantic meaning
      - Special regex patterns: URLs/emails must stay intact since breaking them loses their meaning
@@ -65,7 +35,7 @@ This notebook demonstrates critical practical lessons for NLP, with detailed exp
      - Dynamic batching: Adapts to sequence length for optimal GPU utilization
      - State handling: Critical for maintaining coherent context between batches
 
-2. Transfer learning workflow:
+2. Transfer learning workflow (see [what is Transfer Learning in NLP](./What%20is%20Transfer%20Learning%20in%20NLP.md))
    - Language model fine-tuning:
      1. First, update only the last layer since it handles task-specific features
      2. Gradually unfreeze earlier layers one at a time to avoid damaging pretrained knowledge
@@ -105,25 +75,39 @@ Example of this intuition:
      - Adaptive sizing: Matches representation capacity to word importance
      - Tied weights: Reduces overfitting by sharing parameters
 
-4. Training optimizations and their rationale:
-   - Progressive resizing:
+4. [Training optimizations and their rationale](./Why%20Training%20Optimizations%20Matter.md)
+   - Progressive resizing is helpful:
      - Shorter sequences: Initial rapid learning of basic patterns
      - Gradual length increase: Builds up to handling long-range dependencies
      - Learning rate maintenance: Preserves fine-tuned knowledge through transitions
-   - Mixed precision benefits:
+   - Mixed precision benefits include:
      - Memory savings: Enables larger batches for better gradient estimates
      - Speed improvement: Faster computation with minimal accuracy loss
      - Stability requirements: Why fp32 master weights matter
 
-5. Production considerations and reasoning:
-   - Export requirements:
-     - Complete vocabulary: Required for consistent tokenization
-     - Config preservation: Ensures reproducible preprocessing
-     - Quantization tradeoffs: Memory vs accuracy decisions
-   - Maintenance needs:
-     - Vocabulary updates: Language evolves, model must adapt
-     - Distribution monitoring: Detect concept drift early
-     - Retraining timing: Balance freshness vs stability
+5. [Production considerations](./Production%20Guide%3A%20From%20Training%20to%20Deployment.md)
+
+   Export Requirements 📦
+   - Complete vocabulary must be exported with model
+     → Missing terms = broken tokenization in production
+     → Include special tokens like <unk>, <pad>, <bos>
+   - Configuration must be preserved exactly
+     → Ensures preprocessing stays identical to training
+     → Includes tokenizer settings, max sequence length
+   - Quantization decisions impact deployment
+     → int8 = 75% less memory but 0.5% accuracy drop
+     → fp16 = good balance for most use cases
+
+   Maintenance Strategy 🔄
+   - Regular vocabulary updates keep model current
+     → Add emerging terms quarterly
+     → Remove obsolete terms to save memory
+   - Distribution monitoring catches problems early
+     → Alert if input patterns shift >15%
+     → Track accuracy on key metrics weekly
+   - Strategic retraining maintains performance
+     → Retrain if accuracy drops >2%
+     → Maximum model age: 6 months
 
 Key Takeaways on Why These Matter:
 - Careful preprocessing directly impacts model understanding
@@ -283,99 +267,5 @@ Sources:
 - BERT paper (Devlin et al., 2019)
 - AWD-LSTM paper (Merity et al., 2017)
 - Fast.ai documentation
-
-
-## Tokenization Special Case Example
-
-Let me explain how these tokenization rules work in practice with concrete examples:
-
-```python
-import re
-from transformers import AutoTokenizer
-
-# Commonregex patterns for URLs and emails
-URL_PATTERN = r'https?://\S+|www\.\S+'
-EMAIL_PATTERN = r'\S+@\S+\.\S+'
-
-# Example text
-text = """
-Check out https://fast.ai for ML courses. Contact support@fast.ai
-Mr. Smith works at Apple Inc. The company is great.
-"""
-
-# 1. Preserve URLs and emails
-def preserve_special_tokens(text):
-    # Replace URLs and emails with special tokens
-    urls = re.findall(URL_PATTERN, text)
-    emails = re.findall(EMAIL_PATTERN, text)
-    
-    text = re.sub(URL_PATTERN, ' <URL> ', text)
-    text = re.sub(EMAIL_PATTERN, ' <EMAIL> ', text)
-    return text, urls, emails
-
-# 2. Handle sentence boundaries
-def handle_boundaries(text):
-    # Common abbreviations that shouldn't split sentences
-    abbreviations = ['Mr.', 'Mrs.', 'Dr.', 'Inc.', 'Ltd.']
-    
-    for abbr in abbreviations:
-        text = text.replace(abbr, abbr.replace('.', '<PERIOD>'))
-    
-    # Now safe to split on periods
-    text = text.replace('.', ' . ')
-    
-    # Restore abbreviation periods
-    text = text.replace('<PERIOD>', '.')
-    return text
-
-# Example usage with a modern transformer
-tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-
-# Process text
-processed_text, urls, emails = preserve_special_tokens(text)
-processed_text = handle_boundaries(processed_text)
-
-# Tokenize
-tokens = tokenizer.tokenize(processed_text)
-print(tokens)
-```
-
-This code shows:
-1. URLs/emails are preserved as special tokens instead of being split into meaningless pieces
-2. Sentence boundaries are properly handled by distinguishing between periods in abbreviations vs. end of sentences
-3. The resulting tokens maintain semantic meaning while being model-friendly
-
-When run, you'll see the text is tokenized while maintaining important structural elements that would otherwise be lost with naive tokenization.
-
-Sources:
-- HuggingFace Tokenizers documentation
-- spaCy's tokenization rules
-- fastai's text preprocessing pipeline
-
-## Learning Rate Strategy Deep Dive
-
-Understanding learning rate reduction across model layers is fundamental to effective transfer learning:
-
-### Core Concept
-Earlier layers in neural networks learn universal patterns (syntax, word relationships) while later layers handle task-specific features. When fine-tuning, we want to preserve these fundamental patterns while adapting the model to our specific task. This is why frameworks like fastai implement discriminative learning rates by default - it's crucial for effective transfer learning.
-
-
-### Implementation Pattern
-```python
-# Typical learning rate distribution
-layer_lrs = {
-    'embedding_layer':  base_lr * 0.1,  # Preserve word understanding
-    'encoder_layer_1':  base_lr * 0.2,  # Minimal syntactic changes
-    'encoder_layer_2':  base_lr * 0.5,  # Moderate semantic updates
-    'final_layer':      base_lr         # Full task adaptation
-}
-```
-
-### Why It Matters
-- **Knowledge Preservation**: Early layers contain transferable language understanding
-- **Efficient Learning**: Faster convergence by focusing updates where needed
-- **Catastrophic Forgetting Prevention**: Protects fundamental patterns while allowing task-specific adaptation
-
-This approach is particularly crucial for NLP tasks where base language understanding needs to be maintained while adapting to specific domains like patent analysis.
 
 
